@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>School Management System — Demo</title>
+  <style>
+    /* Simple, clean styles for the single-file demo app */
+    :root{--accent:#007acc;--muted:#666;--bg:#f7f9fc}
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{background:var(--bg);color:#0b0b0b}
+    header{background:#fff;border-bottom:1px solid #e6eef8;display:flex;align-items:center;justify-content:space-between;padding:12px 20px}
+    header h1{font-size:18px;margin:0}
+    .container{max-width:1100px;margin:20px auto;padding:0 16px}
+    nav{display:flex;gap:8px}
+    .tab{background:transparent;border:1px solid transparent;padding:8px 12px;border-radius:6px;color:var(--muted);cursor:pointer}
+    .tab.active{background:linear-gradient(180deg,#f0f8ff,#e6f2ff);border-color:#d0e8ff;color:var(--accent);font-weight:600}
+    .toolbar{display:flex;gap:8px;align-items:center}
+    .btn{background:var(--accent);color:#fff;border:none;padding:8px 10px;border-radius:6px;cursor:pointer}
+    .btn.ghost{background:transparent;color:var(--accent);border:1px solid #d6eaf9}
+    .card{background:#fff;padding:16px;border-radius:8px;box-shadow:0 1px 0 rgba(15,23,42,0.04);margin-bottom:16px}
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:16px;align-items:start}
+    .table{width:100%;border-collapse:collapse}
+    .table th,.table td{padding:8px 10px;border-bottom:1px solid #f1f5f9;text-align:left}
+    .muted{color:var(--muted);font-size:13px}
+    input,select,textarea{padding:8px;border-radius:6px;border:1px solid #e6eef8;width:100%;box-sizing:border-box}
+    form .row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+    .small{font-size:13px;color:var(--muted)}
+    footer{padding:12px;text-align:center;color:var(--muted);font-size:13px}
+    @media(max-width:900px){.grid{grid-template-columns:1fr}.toolbar{flex-wrap:wrap}}
+    .inline-actions{display:flex;gap:6px}
+    .pill{background:#eef7ff;color:var(--accent);padding:4px 8px;border-radius:999px;font-size:12px}
+    .search{display:flex;gap:8px;align-items:center}
+    .search input{width:240px}
+    .center{display:flex;gap:8px;align-items:center}
+    pre{white-space:pre-wrap;background:#f6f8fb;padding:12px;border-radius:6px}
+    .danger{background:#fff5f5;border:1px solid #ffd6d6}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>School Management System — Demo</h1>
+    <div class="center">
+      <nav id="tabs" aria-label="Main tabs"></nav>
+      <div style="width:12px"></div>
+      <div class="toolbar">
+        <button id="importBtn" class="tab">Import</button>
+        <button id="exportBtn" class="tab">Export</button>
+        <button id="resetBtn" class="tab">Reset</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card grid">
+      <div>
+        <div class="card" id="mainView"><!-- Main content rendered by JS --></div>
+        <div id="listView"></div>
+      </div>
+      <aside>
+        <div class="card">
+          <h3>Quick Add — Student</h3>
+          <form id="quickAddForm">
+            <div class="row">
+              <input id="q_first" placeholder="First name" required />
+              <input id="q_last" placeholder="Last name" required />
+            </div>
+            <div class="row">
+              <input id="q_age" type="number" placeholder="Age" />
+              <input id="q_class" placeholder="Class (e.g. 5A)" />
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn" type="submit">Add Student</button>
+              <button id="openStudents" type="button" class="btn ghost">Open Students</button>
+            </div>
+          </form>
+        </div>
+        <div class="card">
+          <h4>About this Demo</h4>
+          <p class="small">This single-file demo stores data in <code>localStorage</code>. It provides basic CRUD for Students, Teachers, Classes and Attendance. It's intentionally simple — suitable for local demos and static hosting.</p>
+        </div>
+      </aside>
+    </section>
+    <div id="rawDebug"></div>
+  </main>
+
+  <footer>
+    Built for demo & teaching — static-only, zero-backend. Use with `Dockerfile.nginx-demo` or any static server.
+  </footer>
+
+  <script>
+    /************************************************************************
+     * School Management System — single file demo
+     * Data model (stored in localStorage under key: sms_demo_data):
+     * { students:[], teachers:[], classes:[], attendance:[] }
+     * This is deliberately in-memory/local for simplicity.
+     ************************************************************************/
+
+    const STORAGE_KEY = 'sms_demo_data_v1'
+
+    // Default seed data
+    const seed = {
+      students: [
+        { id: uid(), first: 'Alice', last: 'Johnson', age: 12, cls: '6A', email: 'alice@example.com' },
+        { id: uid(), first: 'Ben', last: 'Khan', age: 11, cls: '5B', email: 'ben@example.com' }
+      ],
+      teachers: [
+        { id: uid(), name: 'Mr. Smith', subject: 'Math' },
+        { id: uid(), name: 'Ms. Chen', subject: 'English' }
+      ],
+      classes: [
+        { id: uid(), name: '6A', teacherId: null },
+        { id: uid(), name: '5B', teacherId: null }
+      ],
+      attendance: []
+    }
+
+    // Simple utilities
+    function uid() { return 'id_' + Math.random().toString(36).slice(2,9) }
+    function save(data){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)) }
+    function load(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || JSON.parse(JSON.stringify(seed)) } catch(e){ return JSON.parse(JSON.stringify(seed)) } }
+    function reset(){ localStorage.removeItem(STORAGE_KEY); appState = load(); render(); }
+
+    // App state loaded from localStorage
+    let appState = load()
+
+    // --- UI: Tabs and routing ---
+    const TABS = [
+      { id: 'dashboard', label: 'Dashboard' },
+      { id: 'students', label: 'Students' },
+      { id: 'teachers', label: 'Teachers' },
+      { id: 'classes', label: 'Classes' },
+      { id: 'attendance', label: 'Attendance' }
+    ]
+
+    function initTabs(){
+      const tabs = document.getElementById('tabs')
+      tabs.innerHTML = ''
+      TABS.forEach(t => {
+        const btn = document.createElement('button')
+        btn.className = 'tab'
+        btn.textContent = t.label
+        btn.dataset.view = t.id
+        btn.addEventListener('click', ()=>navigate(t.id))
+        tabs.appendChild(btn)
+      })
+    }
+
+    function setActiveTab(id){
+      document.querySelectorAll('#tabs .tab').forEach(b=>b.classList.toggle('active', b.dataset.view===id))
+    }
+
+    // --- Navigation/rendering ---
+    function navigate(view){ location.hash = view }
+
+    window.addEventListener('hashchange', render)
+    function render(){
+      const view = location.hash.replace('#','') || 'dashboard'
+      setActiveTab(view)
+      const main = document.getElementById('mainView')
+      main.innerHTML = ''
+      if(view === 'dashboard') renderDashboard(main)
+      else if(view === 'students') renderStudents(main)
+      else if(view === 'teachers') renderTeachers(main)
+      else if(view === 'classes') renderClasses(main)
+      else if(view === 'attendance') renderAttendance(main)
+      document.getElementById('rawDebug').innerHTML = ''
+      document.getElementById('listView').innerHTML = ''
+    }
+
+    // --- Renderers ---
+    function renderDashboard(container){
+      const d = appState
+      const html = document.createElement('div')
+      html.innerHTML = `
+        <h2>Dashboard</h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div class="card" style="min-width:160px"><div class="pill">Students</div><h3>${d.students.length}</h3></div>
+          <div class="card" style="min-width:160px"><div class="pill">Teachers</div><h3>${d.teachers.length}</h3></div>
+          <div class="card" style="min-width:160px"><div class="pill">Classes</div><h3>${d.classes.length}</h3></div>
+        </div>
+        <div style="margin-top:12px"><h3>Recent Students</h3></div>
+      `
+      const list = document.createElement('div')
+      list.className = 'card'
+      list.innerHTML = tableFor(d.students.slice(-5).reverse(), ['first','last','age','cls'])
+      container.appendChild(html)
+      container.appendChild(list)
+    }
+
+    function renderStudents(container){
+      const searchInput = createSearch(() => renderStudents(container))
+      const top = document.createElement('div')
+      top.style.display = 'flex'
+      top.style.justifyContent = 'space-between'
+      top.style.alignItems = 'center'
+      top.innerHTML = `<h2>Students</h2>`
+      const right = document.createElement('div')
+      right.appendChild(searchInput)
+
+      top.appendChild(right)
+      const listCard = document.createElement('div')
+      listCard.className = 'card'
+
+      // Table and actions
+      const students = filteredStudents()
+      listCard.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div class="small muted">${students.length} student(s)</div>
+          <div style="display:flex;gap:8px">
+            <button id="addNewStudent" class="btn">New Student</button>
+            <button id="exportStudents" class="tab">Export JSON</button>
+          </div>
+        </div>
+        ${tableFor(students, ['first','last','age','cls','email'], true)}
+      `
+
+      container.appendChild(top)
+      container.appendChild(listCard)
+
+      document.getElementById('addNewStudent')?.addEventListener('click', ()=>showStudentForm())
+      document.getElementById('exportStudents')?.addEventListener('click', ()=>download(JSON.stringify(students, null, 2), 'students.json'))
+
+      // Attach inline action handlers (edit/delete)
+      document.querySelectorAll('[data-action="edit-student"]').forEach(btn=>btn.addEventListener('click',(e)=>{
+        const id = e.target.dataset.id
+        showStudentForm(id)
+      }))
+      document.querySelectorAll('[data-action="delete-student"]').forEach(btn=>btn.addEventListener('click',(e)=>{
+        const id = e.target.dataset.id
+        if(confirm('Delete student?')){ appState.students = appState.students.filter(s=>s.id!==id); save(appState); render() }
+      }))
+    }
+
+    function renderTeachers(container){
+      container.innerHTML = '<h2>Teachers</h2>'
+      const list = document.createElement('div')
+      list.className = 'card'
+      list.innerHTML = tableFor(appState.teachers, ['name','subject'], true)
+      container.appendChild(list)
+    }
+
+    function renderClasses(container){
+      container.innerHTML = '<h2>Classes</h2>'
+      const list = document.createElement('div')
+      list.className = 'card'
+      list.innerHTML = tableFor(appState.classes, ['name'], true)
+      container.appendChild(list)
+    }
+
+    function renderAttendance(container){
+      container.innerHTML = '<h2>Attendance</h2>'
+      const list = document.createElement('div')
+      list.className = 'card'
+      list.innerHTML = `<p class="small">Marking attendance is a demo: select a class and mark present/absent.</p>`
+
+      // Simple attendance controls
+      const form = document.createElement('div')
+      form.style.marginTop = '8px'
+      form.innerHTML = `
+        <div class="row">
+          <select id="att_class">${appState.classes.map(c=>`<option value="${c.name}">${c.name}</option>`).join('')}</select>
+          <select id="att_student">${appState.students.map(s=>`<option value="${s.id}">${s.first} ${s.last}</option>`).join('')}</select>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="markPresent" class="btn">Present</button>
+          <button id="markAbsent" class="tab">Absent</button>
+        </div>
+      `
+      list.appendChild(form)
+      container.appendChild(list)
+
+      document.getElementById('markPresent').addEventListener('click', ()=>markAttendance(true))
+      document.getElementById('markAbsent').addEventListener('click', ()=>markAttendance(false))
+    }
+
+    // --- Helper render functions ---
+    function tableFor(items, cols, includeActions=false){
+      if(!items || items.length===0) return '<div class="small muted">No records</div>'
+      const headers = cols.map(c=>`<th>${escapeHtml(c)}</th>`).join('') + (includeActions?'<th>Actions</th>':'')
+      const rows = items.map(item=>{
+        const cells = cols.map(c=>`<td>${escapeHtml(displayVal(item, c))}</td>`).join('')
+        const actions = includeActions?`<td class="inline-actions"><button class="tab" data-action="edit-student" data-id="${item.id}">Edit</button><button class="tab danger" data-action="delete-student" data-id="${item.id}">Delete</button></td>`:''
+        return `<tr>${cells}${actions}</tr>`
+      }).join('')
+      return `<table class="table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`
+    }
+
+    function displayVal(obj, key){
+      if(key==='first') return obj.first || ''
+      if(key==='last') return obj.last || ''
+      return escapeHtml(obj[key] || '')
+    }
+
+    function escapeHtml(s){ if(s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+
+    // --- Student form (create/edit) ---
+    function showStudentForm(id){
+      const container = document.getElementById('listView')
+      container.innerHTML = ''
+      const card = document.createElement('div')
+      card.className = 'card'
+      const student = appState.students.find(s=>s.id===id) || { id:null, first:'', last:'', age:'', cls:'', email:'' }
+      card.innerHTML = `
+        <h3>${student.id? 'Edit Student':'New Student'}</h3>
+        <form id="studentForm">
+          <div class="row">
+            <input name="first" placeholder="First" value="${escapeHtml(student.first)}" required />
+            <input name="last" placeholder="Last" value="${escapeHtml(student.last)}" required />
+          </div>
+          <div class="row">
+            <input name="age" type="number" placeholder="Age" value="${escapeHtml(student.age)}" />
+            <input name="cls" placeholder="Class" value="${escapeHtml(student.cls)}" />
+          </div>
+          <div style="margin-bottom:8px">
+            <input name="email" placeholder="Email" value="${escapeHtml(student.email)}" />
+          </div>
+          <div style="display:flex;gap:8px"><button class="btn" type="submit">Save</button><button id="cancelStudent" type="button" class="tab">Cancel</button></div>
+        </form>
+      `
+      container.appendChild(card)
+
+      document.getElementById('cancelStudent').addEventListener('click', ()=>{ container.innerHTML=''; render() })
+      document.getElementById('studentForm').addEventListener('submit', (e)=>{
+        e.preventDefault(); const f = Object.fromEntries(new FormData(e.target).entries())
+        if(student.id){ // update
+          const idx = appState.students.findIndex(s=>s.id===student.id)
+          appState.students[idx] = { ...appState.students[idx], ...f }
+        } else { // create
+          const newS = { id: uid(), ...f }
+          appState.students.push(newS)
+        }
+        save(appState); container.innerHTML=''; render()
+      })
+    }
+
+    // --- Quick add form ---
+    document.getElementById('quickAddForm').addEventListener('submit', (e)=>{
+      e.preventDefault()
+      const first = document.getElementById('q_first').value.trim()
+      const last = document.getElementById('q_last').value.trim()
+      const age = document.getElementById('q_age').value
+      const cls = document.getElementById('q_class').value.trim()
+      if(!first || !last){ alert('First and last name required'); return }
+      appState.students.push({ id: uid(), first, last, age: age||'', cls, email: '' })
+      save(appState); e.target.reset(); navigate('students')
+    })
+    document.getElementById('openStudents').addEventListener('click', ()=>navigate('students'))
+
+    // --- Search helpers ---
+    function createSearch(onchange){
+      const wrap = document.createElement('div')
+      wrap.className = 'search'
+      const input = document.createElement('input')
+      input.placeholder = 'Search students by name or class'
+      input.addEventListener('input', ()=>{ searchQuery = input.value.trim().toLowerCase(); onchange() })
+      wrap.appendChild(input)
+      return wrap
+    }
+    let searchQuery = ''
+    function filteredStudents(){
+      if(!searchQuery) return appState.students
+      return appState.students.filter(s=>`${s.first} ${s.last}`.toLowerCase().includes(searchQuery) || (s.cls||'').toLowerCase().includes(searchQuery))
+    }
+
+    // --- Attendance ---
+    function markAttendance(present){
+      const cls = document.getElementById('att_class').value
+      const studentId = document.getElementById('att_student').value
+      appState.attendance.push({ id: uid(), studentId, cls, present, date: new Date().toISOString() })
+      save(appState); alert('Attendance recorded')
+    }
+
+    // --- Import / Export / Reset features ---
+    document.getElementById('exportBtn').addEventListener('click', ()=>{
+      download(JSON.stringify(appState, null, 2), 'sms-data.json')
+    })
+    document.getElementById('importBtn').addEventListener('click', ()=>{
+      const input = document.createElement('input')
+      input.type = 'file'; input.accept = 'application/json'
+      input.addEventListener('change', async (e)=>{
+        const file = e.target.files[0]; if(!file) return
+        const txt = await file.text();
+        try{ const obj = JSON.parse(txt); appState = obj; save(appState); render(); alert('Imported data') }catch(err){ alert('Invalid JSON file') }
+      })
+      input.click()
+    })
+    document.getElementById('resetBtn').addEventListener('click', ()=>{
+      if(confirm('Reset demo data to defaults?')) reset()
+    })
+
+    // --- Utilities ---
+    function download(content, filename){
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(new Blob([content], {type:'application/json'}))
+      a.download = filename
+      document.body.appendChild(a); a.click(); a.remove()
+    }
+
+    // Show raw debug JSON (optional for demo)
+    function showDebug(){
+      const el = document.getElementById('rawDebug')
+      el.innerHTML = '<div class="card"><h4>Raw Data (localStorage)</h4><pre>'+escapeHtml(JSON.stringify(appState, null, 2))+'</pre></div>'
+    }
+
+    // Simple helper to seed if empty
+    if(!localStorage.getItem(STORAGE_KEY)) { save(seed); appState = load() }
+
+    // startup
+    initTabs();
+    render();
+    showDebug();
+
+    // Expose a few helpers to the console for interactive testing
+    window.sms = {
+      state: ()=>appState,
+      save: ()=>{ save(appState); render(); showDebug() },
+      reset: reset
+    }
+  </script>
+</body>
+</html>

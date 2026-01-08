@@ -1,0 +1,48 @@
+# Simple Dockerfile to serve static files with nginx
+# Demonstrates common Dockerfile instructions and a minimal healthcheck.
+
+# Base image (lightweight, maintained nginx build)
+FROM nginx:stable-alpine
+
+# Image metadata
+LABEL maintainer="you@example.com" \
+      description="Simple nginx image to serve a static site (demo)"
+
+# Environment variables baked into the image. These are for documentation
+# and run-time configurability; tools or entrypoint scripts may use them.
+ENV NGINX_HOST=localhost \
+    NGINX_PORT=80
+
+# Set the working directory for subsequent instructions. For nginx the
+# default web root inside the image is /usr/share/nginx/html.
+WORKDIR /usr/share/nginx/html
+
+# Remove default content (optional but explicit) and copy static site
+# from the build context into the container image. Keeping COPY near the
+# top is fine for this simple demo; for larger projects you'd prefer
+# copying package files first and using multi-stage builds when needed.
+RUN rm -rf ./*
+COPY ./static/ ./
+
+# Expose documents that this container intends to listen on (metadata only).
+# This does not publish the port on the host—use `docker run -p` to map it.
+EXPOSE 80
+
+# Minimal HEALTHCHECK so orchestrators (or `docker ps`) can detect unhealthy
+# containers. It periodically requests the root path and expects a 200-ish
+# response. If `wget` is not present in the image, the command will fail; the
+# base nginx:alpine image includes `wget` via busybox's wget implementation.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget -qO- --timeout=2 http://localhost:80/ || exit 1
+
+# Use nginx in the foreground. The official image provides this entrypoint
+# by default, but we set CMD explicitly for clarity in this demo.
+CMD ["nginx", "-g", "daemon off;"]
+
+# Notes inside the Dockerfile (not executed):
+# - To build: docker build -t nginx-demo -f Dockerfile.nginx-demo .
+# - To run (map port 8080 -> container 80):
+#     docker run --rm -p 8080:80 nginx-demo
+# - To mount local static content (PowerShell):
+#     docker run --rm -p 8080:80 -v ${PWD}\static:/usr/share/nginx/html:ro nginx-demo
+#   (Ensure `static/index.html` exists in the project root.)
